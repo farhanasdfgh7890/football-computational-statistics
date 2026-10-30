@@ -12,10 +12,12 @@ from __future__ import annotations
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 
+import base64
 import warnings
 import numpy as np
 import pandas as pd
 import streamlit as st
+import requests as _requests
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -25,7 +27,45 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-BARCA_LOGO = "https://upload.wikimedia.org/wikipedia/en/thumb/4/47/FC_Barcelona_%28crest%29.svg/200px-FC_Barcelona_%28crest%29.svg.png"
+# ── Fetch Barca logo as base64 (bypasses hotlink blocks) ───────────────────────
+_LOGO_URLS = [
+    "https://upload.wikimedia.org/wikipedia/en/thumb/4/47/FC_Barcelona_%28crest%29.svg/200px-FC_Barcelona_%28crest%29.svg.png",
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/FC_Barcelona_%28crest%29.svg/200px-FC_Barcelona_%28crest%29.svg.png",
+    "https://logodownload.org/wp-content/uploads/2016/04/barcelona-fc-logo-5.png",
+]
+_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+
+@st.cache_data(show_spinner=False)
+def _fetch_logo_b64() -> str:
+    """Download Barca crest, return as data-URI. Falls back to CSS crest on failure."""
+    for url in _LOGO_URLS:
+        try:
+            r = _requests.get(url, timeout=6, headers=_HEADERS)
+            if r.status_code == 200 and len(r.content) > 500:
+                b64 = base64.b64encode(r.content).decode()
+                mime = "image/svg+xml" if url.endswith(".svg") else "image/png"
+                return f"data:{mime};base64,{b64}"
+        except Exception:
+            pass
+    return ""   # empty → CSS fallback crest is shown instead
+
+_LOGO_DATA = _fetch_logo_b64()
+
+# HTML helper: renders crest img if data loaded, else a CSS blaugrana shield
+def _crest_html(size: int = 72, extra_style: str = "") -> str:
+    if _LOGO_DATA:
+        return (f'<img src="{_LOGO_DATA}" width="{size}" '
+                f'class="crest-glow" alt="FC Barcelona" '
+                f'style="display:inline-block;{extra_style}">')
+    # CSS-only fallback blaugrana shield
+    half = size // 2
+    return f"""
+    <div style="display:inline-flex;align-items:center;justify-content:center;
+                width:{size}px;height:{size}px;border-radius:50%;
+                background:linear-gradient(135deg,#A50044 0%,#A50044 50%,#004D98 50%,#004D98 100%);
+                border:3px solid #EDBB00;{extra_style}">
+        <span style="font-size:{half}px;line-height:1;">⚽</span>
+    </div>"""
 
 # ── BARCELONA CSS ──────────────────────────────────────────────────────────────
 st.markdown("""
@@ -417,7 +457,7 @@ def render_sidebar(df_full: pd.DataFrame) -> dict:
     st.sidebar.markdown(f"""
     <div class="sidebar-brand">
         <div class="sb-logo">
-            <img src="{BARCA_LOGO}" width="64" class="crest-glow" alt="FC Barcelona">
+            {_crest_html(64)}
         </div>
         <h3>FCB ANALYTICS</h3>
         <p>Més que un Club · Est. 1899</p>
@@ -488,7 +528,7 @@ def render_hero(df: pd.DataFrame = None, page: str = ""):
     <div class="hero-banner">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
             <div style="display:flex;align-items:center;gap:20px;">
-                <img src="{BARCA_LOGO}" width="72" class="crest-glow" alt="FC Barcelona Crest">
+                {_crest_html(72)}
                 <div>
                     <span class="hero-badge">🔵🔴 FC BARCELONA · ANALYTICS HUB</span>
                     <div class="hero-title">MÉS QUE UN CLUB</div>
@@ -941,7 +981,7 @@ def page_about():
     # Big crest hero
     st.markdown(f"""
     <div style="text-align:center;padding:30px 0 10px;">
-        <img src="{BARCA_LOGO}" width="110" class="crest-glow" alt="FC Barcelona Crest">
+        {_crest_html(110)}
         <div style="font-family:'Oswald',sans-serif;font-size:2.2rem;font-weight:700;
                     background:linear-gradient(90deg,#A50044,#EDBB00,#004D98,#EDBB00,#A50044);
                     -webkit-background-clip:text;-webkit-text-fill-color:transparent;
@@ -959,7 +999,7 @@ def page_about():
     <div style="background:linear-gradient(135deg,#0A0C1C,#060810);
                 border:1px solid #1A1A38;border-radius:14px;padding:24px 28px;margin:14px 0;">
         <div style="display:flex;align-items:center;gap:20px;margin-bottom:18px;">
-            <img src="{BARCA_LOGO}" width="50" class="crest-glow">
+            {_crest_html(50)}
             <div>
                 <div style="font-family:'Oswald',sans-serif;font-size:1.2rem;color:#EDBB00;font-weight:600;">
                     Statistical Analysis of International Football Performance
@@ -1022,7 +1062,7 @@ def page_about():
     pitch_divider()
     st.markdown(f"""
     <div style="text-align:center;padding:14px 0;">
-        <img src="{BARCA_LOGO}" width="36" style="opacity:0.4;">
+        {_crest_html(36, extra_style="opacity:0.4;")}
         <div style="color:#1A2040;font-size:0.72rem;margin-top:6px;letter-spacing:1px;">
             ALL STATISTICAL OUTPUTS ARE DERIVED FROM THE ACTUAL DATASET · NO VALUES ARE FABRICATED
         </div>
